@@ -61,7 +61,7 @@ A local PC deployment is recommended if you wish to load data from an SD, local 
 
 ```
 python -m venv env && source env/bin/activate && pip install -r requirements.txt
-python canedge_datasource_cli.py file:///$PWD/LOG --port 8080 --limit 100
+python canedge_datasource_cli.py file:///$PWD/LOG --port 8080 --limit 100 --dbc my_rules.dbc
 ```
 
 #### Set up Grafana locally
@@ -94,7 +94,7 @@ Note: To easily start the backend, we recommend that you create a copy of the `r
 - Right-click the `run_s3.bat` file and enter your S3 `endpoint`, `access_key`, `secret_key` and `bucket`
 
 ```
-python canedge_datasource_cli.py endpoint --port 8080 --limit 100 --s3_ak access_key --s3_sk secret_key --s3_bucket bucket
+python canedge_datasource_cli.py endpoint --port 8080 --limit 100 --s3_ak access_key --s3_sk secret_key --s3_bucket bucket --dbc my_rules.dbc
 ```
 
 - AWS S3 `endpoint` example: `https://s3.eu-central-1.amazonaws.com`
@@ -139,7 +139,7 @@ sudo apt update && sudo apt install python3 python3-pip python3-venv tmux python
 git clone https://github.com/CSS-Electronics/canedge-grafana-backend.git && cd canedge-grafana-backend
 python -m venv env && source env/bin/activate && pip install -r requirements.txt
 tmux
-python canedge_datasource_cli.py file:///$PWD/LOG --port 8080 --limit 100
+python canedge_datasource_cli.py file:///$PWD/LOG --port 8080 --limit 100 --dbc my_rules.dbc
 ```
 
 #### Set up Grafana Cloud

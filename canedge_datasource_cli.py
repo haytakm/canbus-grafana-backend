@@ -20,8 +20,10 @@ from urllib.request import url2pathname
 @click.option('--loglevel', required=False, default="INFO",
               type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]), help='Logging level')
 @click.option('--tp_type', required=False, default="", type=str, help='ISO TP type (uds, j1939, nmea)')
+@click.option('--dbc', 'dbc_files', multiple=True, type=click.Path(),
+              help='Path(s) to DBC file(s). Overrides automatic discovery in data root.')
 
-def main(data_url, port, limit, s3_ak, s3_sk, s3_bucket, s3_cert, loglevel, tp_type):
+def main(data_url, port, limit, s3_ak, s3_sk, s3_bucket, s3_cert, loglevel, tp_type, dbc_files):
     """
     CANedge Grafana Datasource. Provide a URL pointing to a CANedge data root.
 
@@ -100,15 +102,22 @@ def main(data_url, port, limit, s3_ak, s3_sk, s3_bucket, s3_cert, loglevel, tp_t
         logging.error(f"Unsupported data URL: {data_url}")
         sys.exit(-1)
 
-    # Load DBs in root
+    # Load DBC files
     logging.getLogger("canmatrix").setLevel(logging.ERROR)
     import can_decoder
     dbs = {}
-    for db_path in fs.glob("*.dbc"):
-        db_name = Path(db_path).stem.lower()
-        with fs.open(db_path) as fp:
+    dbc_paths = list(dbc_files) if dbc_files else list(fs.glob("*.dbc"))
+
+    for db_path in dbc_paths:
+        if dbc_files:
+            db_name = Path(db_path).stem.lower()
+            fp = open(db_path, "r")
+        else:
+            db_name = Path(db_path).stem.lower()
+            fp = fs.open(db_path)
+        with fp:
             db = can_decoder.load_dbc(fp)
-            dbs[db_name] = {"db": db, "signals": db.signals()}
+        dbs[db_name] = {"db": db, "signals": db.signals()}
 
     print(f"Loaded DBs: {', '.join(dbs.keys())}")
 
