@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, request
 from flask import current_app as app
 from canedge_datasource import cache
 from canedge_datasource.enums import CanedgeInterface, CanedgeChannel, SampleMethod
-from canedge_datasource.signal import SignalQuery, time_series_phy_data, table_raw_data, table_fs
+from canedge_datasource.signal import SignalQuery, time_series_phy_data, time_series_mdf_data, table_raw_data, table_fs
 from canedge_datasource.time_range import parse_time_range
 
 import logging
@@ -142,39 +142,50 @@ def _query_time_series(req: dict, start_date: datetime, stop_date: datetime) -> 
             logger.warning(f"Failed to query target: {elm['target']}")
             continue
 
-        # Fields required for series
-        if not all(x in target_req for x in ["device", "itf", "chn", "db", "signal"]):
+        # Fields required
+        if not all(x in target_req for x in ["device", "signal"]):
             logger.warning(f"Target missing required fields: {target_req}")
             continue
 
-        # Check that DB is known
-        if target_req["db"] not in app.dbs.keys():
-            logger.warning(f"Unknown DB: {target_req['db']}")
+        db_name = target_req.get("db", "")
+        use_mdf = db_name not in app.dbs.keys()
+
+        if not use_mdf and not all(x in target_req for x in ["itf", "chn"]):
+            logger.warning(f"Target missing required fields: {target_req}")
             continue
 
-        # If multiple signals in request, add each as signal query
         for signal in target_req["signal"]:
-            # Provide a readable unique target name (the list of signals is replaced by the specific signal)
             target_name = ":".join([str(x) for x in dict(target_req, signal=signal).values()])
+
+            db_obj = app.dbs[db_name]["db"] if not use_mdf else None
+            itf = target_req.get("itf", CanedgeInterface.CAN)
+            chn = target_req.get("chn", CanedgeChannel.CH1)
 
             signal_queries.append(SignalQuery(refid=elm["refId"],
                                               target=target_name,
                                               device=target_req["device"],
-                                              itf=target_req["itf"],
-                                              chn=target_req["chn"],
-                                              db=app.dbs[target_req["db"]]["db"],
+                                              itf=itf,
+                                              chn=chn,
+                                              db=db_obj,
                                               signal_name=signal,
                                               interval_ms=int(req["intervalMs"]),
                                               method=target_req.get("method", SampleMethod.NEAREST)))
 
-    # Get signals
-    return time_series_phy_data(fs=app.fs,
-                                signal_queries=signal_queries,
-                                start_date=start_date,
-                                stop_date=stop_date,
-                                limit_mb=app.limit_mb,
-                                passwords=app.passwords,
-                                tp_type=app.tp_type)
+    if any(q.db is None for q in signal_queries):
+        return time_series_mdf_data(fs=app.fs,
+                                    signal_queries=signal_queries,
+                                    start_date=start_date,
+                                    stop_date=stop_date,
+                                    limit_mb=app.limit_mb,
+                                    passwords=app.passwords)
+    else:
+        return time_series_phy_data(fs=app.fs,
+                                    signal_queries=signal_queries,
+                                    start_date=start_date,
+                                    stop_date=stop_date,
+                                    limit_mb=app.limit_mb,
+                                    passwords=app.passwords,
+                                    tp_type=app.tp_type)
 
 def _query_table(req: dict, start_date: datetime, stop_date: datetime) -> list:
 

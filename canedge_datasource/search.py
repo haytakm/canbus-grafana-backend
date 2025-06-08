@@ -1,5 +1,6 @@
 import json
 import mdf_iter
+from parse_mdf_signals import list_signals
 from flask import Blueprint, jsonify, request
 from flask import current_app as app
 from canedge_datasource import cache
@@ -79,6 +80,13 @@ def search_view():
                 db_name = req["db"].lower()
                 if db_name in app.dbs.keys():
                     res = app.dbs[db_name]["signals"]
+            elif req["search"] == "signal_mdf" and "device" in req:
+                try:
+                    log_file, _, _ = next(app.fs.get_device_log_files(device=req["device"], reverse=True), (None, None, None))
+                    if log_file is not None:
+                        res = list_signals(log_file, fs=app.fs)
+                except Exception:
+                    logger.warning("Failed to list MDF signals")
             else:
                 logger.warning(f"Unknown search: {req}")
 

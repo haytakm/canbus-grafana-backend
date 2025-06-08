@@ -32,6 +32,7 @@ For details incl. 'pros & cons', see our [intro to telematics dashboards](https:
 - view log file sessions & splits via Annotations, enabling easy identification of underlying data 
 - allow end users control over what devices/signals are displayed via flexible Variables
 - Support for CAN, CAN FD and LIN, as well as CAN ISO TP (UDS, J1939, NMEA 2000)
+- parse physical MDF signals directly when no DBC is supplied
 ```
 
 ----
@@ -254,6 +255,7 @@ The CLI takes a number of optional input arguments - including below:
 - `limit`: Set a max limit (MB of MF4 logs) on how much data processed in one query (default: `100 MB`)
 - `tp_type`: Set to `uds`, `j1939` or `nmea` to enable multiframe decoding (default: Disabled)
 - `loglevel`: Set the console detail level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` (default: `INFO`)
+- If no DBC is supplied, set the query `db` field to `mdf` and optionally list signals via `search` using `signal_mdf`
 
 #### Port forwarding a local deployment
 
