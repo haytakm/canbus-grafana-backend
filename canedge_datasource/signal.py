@@ -8,6 +8,7 @@ import can_decoder
 import mdf_iter
 from datetime import datetime
 from utils import MultiFrameDecoder
+from parse_mdf_signals import list_signals
 
 from canedge_datasource import cache
 from canedge_datasource.enums import CanedgeInterface, CanedgeChannel, SampleMethod
@@ -343,6 +344,73 @@ def time_series_phy_data(fs, signal_queries: [SignalQuery], start_date: datetime
     return result
 
 
+def time_series_mdf_data(fs, signal_queries: [SignalQuery], start_date: datetime, stop_date: datetime, limit_mb,
+                         passwords) -> dict:
+    """Return time series for signals already stored in the MDF."""
+
+    result = [{'refId': x.refid, 'target': x.target, 'datapoints': []} for x in signal_queries]
+
+    data_processed_mb = 0
+
+    for device, device_group in groupby(signal_queries, lambda x: x.device):
+
+        device_group = list(device_group)
+
+        log_files = canedge_browser.get_log_files(fs, device, start_date=start_date, stop_date=stop_date,
+                                                  passwords=passwords)
+
+        session_previous = None
+        for log_file in log_files:
+
+            _, session_current, _, _ = fs.path_to_pars(log_file)
+            new_session = False
+            if session_previous is not None and session_previous != session_current:
+                new_session = True
+            session_previous = session_current
+
+            file_size_mb = fs.stat(log_file)["size"] >> 20
+            if data_processed_mb + file_size_mb > limit_mb:
+                logger.info(f"File: {log_file} - Skipping (limit {limit_mb} MB)")
+                continue
+
+            logger.info(f"File: {log_file}")
+            data_processed_mb += file_size_mb
+
+            start_epoch, df_phys = _load_mdf_file(fs, log_file, passwords)
+
+            df_phys = df_phys.loc[start_date:stop_date]
+
+            for signal_group in device_group:
+                if signal_group.signal_name not in df_phys.columns:
+                    continue
+
+                df_signal = df_phys[[signal_group.signal_name]].rename(columns={signal_group.signal_name: 'val'})
+                df_signal['time_orig'] = df_signal.index
+
+                interval_ms = signal_group.interval_ms
+                if signal_group.method == SampleMethod.MIN:
+                    df_resample = df_signal.resample(f"{interval_ms}ms").min()
+                elif signal_group.method == SampleMethod.MAX:
+                    df_resample = df_signal.resample(f"{interval_ms}ms").max()
+                else:
+                    df_resample = df_signal.resample(f"{interval_ms}ms").nearest()
+
+                df_resample.drop_duplicates(subset='time_orig', inplace=True)
+                df_resample.dropna(axis=0, how='any', inplace=True)
+
+                timestamps = (df_resample['time_orig'].astype(np.int64) / 10 ** 6).tolist()
+                values = df_resample['val'].tolist()
+
+                idx = [i for i, v in enumerate(result) if v['target'] == signal_group.target][0]
+
+                if new_session:
+                    result[idx]['datapoints'].extend([[None, None]])
+
+                result[idx]['datapoints'].extend(list(zip(values, timestamps)))
+
+    return result
+
+
 def _load_log_file(fs, file, itf_used, passwords):
 
     # As local function to be able to cache result
@@ -361,3 +429,16 @@ def _load_log_file(fs, file, itf_used, passwords):
         return start_epoch, df_raw_can_local, df_raw_lin_local
 
     return _load_log_file_cache(file, itf_used, passwords)
+
+
+def _load_mdf_file(fs, file, passwords):
+
+    @cache.memoize(timeout=50)
+    def _load_mdf_file_cache(file_in, passwords_in):
+        with fs.open(file_in, "rb") as handle:
+            mdf_file = mdf_iter.MdfFile(handle, passwords=passwords_in)
+            start_epoch = datetime.utcfromtimestamp(mdf_file.get_first_measurement() / 1000000000)
+            df = mdf_file.get_data_frame()
+        return start_epoch, df
+
+    return _load_mdf_file_cache(file, passwords)
